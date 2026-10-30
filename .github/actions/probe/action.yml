@@ -1,0 +1,40 @@
+name: almus-probe
+description: Runs read-only ALMUS runner + Cuttlefish readiness probes and uploads the evidence.
+inputs:
+  artifact_name:
+    description: Unique artifact name for this probe run
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: 1. Baseline probe (before any change)
+      shell: bash
+      run: |
+        mkdir -p probe-out evidence
+        bash scripts/ci/probe-runner.sh
+    - name: 2. AOSP host dependency check
+      shell: bash
+      run: bash scripts/ci/check-aosp-deps.sh
+    - name: 3. Cuttlefish environment readiness (checks only, no boot)
+      shell: bash
+      run: |
+        bash testing/cuttlefish/verify-cuttlefish.sh check || echo "verify-cuttlefish exited non-zero, so the environment is NOT ready (a result, not a workflow error)"
+    - name: 4. Job summary
+      if: always()
+      shell: bash
+      run: |
+        {
+          echo "### Runner probe"; echo '```'; cat probe-out/probe.txt 2>/dev/null; echo '```'
+          echo "### AOSP deps"; echo '```'; grep -E 'MISSING|summary' probe-out/deps.txt 2>/dev/null || true; echo '```'
+          echo "### Cuttlefish readiness (NOT a boot test)"; echo '```'; cat evidence/cuttlefish-compat.txt 2>/dev/null; echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+    - name: 5. Upload evidence
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: |
+          probe-out/
+          evidence/
+        retention-days: 7
+        if-no-files-found: warn

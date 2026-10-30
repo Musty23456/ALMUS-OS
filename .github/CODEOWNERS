@@ -1,0 +1,4 @@
+# Enable after replacing OWNER with your GitHub user/team, and turn on "Require review from Code Owners"
+# in branch protection so nobody can change runners/workflows/scripts without review.
+# /.github/   @OWNER
+# /scripts/   @OWNER

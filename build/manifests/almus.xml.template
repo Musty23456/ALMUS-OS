@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Local manifest TEMPLATE. Rename to almus.xml (and fill in) only when a fork or extra project is needed.
+     sync.sh copies *.xml (not *.template) into .repo/local_manifests/. -->
+<manifest>
+  <!-- <remote name="almus" fetch="https://github.com/YOUR_ORG/" />
+  <project path="vendor/almus" name="almus-os-vendor" remote="almus" revision="main" /> -->
+</manifest>

@@ -1,0 +1,120 @@
+# =====================================================================================
+# TEMPLATE - MANUAL ONLY - DISABLED BY DEFAULT - NEVER EXECUTED IN PHASE 2
+# Cost gates (all must pass):
+#   1. Trigger is workflow_dispatch only (no PR/push/schedule trigger exists in this file).
+#   2. Repository variable ALMUS_BUILDS_ENABLED must equal 'true' (unset by default).
+#   3. Must be dispatched from refs/heads/main, with confirm=BUILD.
+#   4. Target must be in build/targets.conf (empty in Phase 2) and build/AOSP_VERSION pinned.
+#   5. Build job needs Environment 'expensive-builds' (required reviewers = manual approval).
+#   6. Hard timeout 350 min (hosted jobs are cut at 360 min anyway), single concurrency slot.
+# The paid runner label 'almus-linux-16c' does not exist until you create it (docs/RUNNER_16CORE.md).
+# =====================================================================================
+name: build-aosp
+run-name: "build-aosp (${{ inputs.runner_kind }}) ${{ inputs.target }}"
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: lunch target (must be listed in build/targets.conf)
+        type: string
+        required: true
+      runner_kind:
+        description: Where to build
+        type: choice
+        required: true
+        default: self-hosted
+        options:
+          - self-hosted
+          - paid-larger-16core
+      confirm:
+        description: Type BUILD to confirm you accept the cost and time
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: almus-build
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  guard:
+    if: vars.ALMUS_BUILDS_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      runs_on: ${{ steps.decide.outputs.runs_on }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate request (free runner)
+        id: decide
+        env:
+          TARGET: ${{ inputs.target }}
+          CONFIRM: ${{ inputs.confirm }}
+          KIND: ${{ inputs.runner_kind }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [ "$REF" = "refs/heads/main" ] || { echo "::error::builds only from main"; exit 1; }
+          [ "$CONFIRM" = "BUILD" ] || { echo "::error::confirm must be BUILD"; exit 1; }
+          [ "$(tr -d '[:space:]' < build/AOSP_VERSION)" != "UNPINNED" ] || { echo "::error::build/AOSP_VERSION is UNPINNED"; exit 1; }
+          grep -vE '^[[:space:]]*#' build/targets.conf | sed 's/[[:space:]]*$//' | grep -qxF -- "$TARGET" \
+            || { echo "::error::target not in build/targets.conf"; exit 1; }
+          case "$KIND" in
+            paid-larger-16core) echo 'runs_on=["almus-linux-16c"]' >> "$GITHUB_OUTPUT"
+                                echo "Paid runner selected. Worst case = 350 billable minutes (see docs/COST_CONTROL.md)." ;;
+            self-hosted)        echo 'runs_on=["self-hosted","linux","x64","almus-builder"]' >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::unknown runner kind"; exit 1 ;;
+          esac
+
+  build:
+    needs: guard
+    if: needs.guard.result == 'success'
+    runs-on: ${{ fromJSON(needs.guard.outputs.runs_on) }}
+    environment: expensive-builds
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    env:
+      ALMUS_ALLOW_FULL_BUILD: "yes"
+      ALMUS_AOSP_DIR: ${{ github.workspace }}/../aosp
+      TARGET: ${{ inputs.target }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Preflight - fail fast if the machine is too small
+        run: |
+          mkdir -p logs
+          cd "$HOME" && PROBE_OUT_DIR="$GITHUB_WORKSPACE/probe-out" bash "$GITHUB_WORKSPACE/scripts/ci/probe-runner.sh" --strict
+      - name: Install AOSP host dependencies
+        env:
+          ALMUS_INSTALL_AOSP_DEPS: "yes"
+        run: bash scripts/ci/install-aosp-deps.sh 2>&1 | tee logs/dependencies.log
+      - name: Sync pinned AOSP
+        run: bash scripts/build/sync.sh 2>&1 | tee logs/sync.log
+      - name: Build
+        run: bash scripts/build/build.sh "$TARGET" 2>&1 | tee logs/build.log
+      - name: Collect images
+        run: bash scripts/build/collect.sh "$GITHUB_WORKSPACE/out-artifacts"
+      - name: Upload images (short retention)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: almus-images-${{ github.run_id }}
+          path: out-artifacts/
+          retention-days: 7
+          compression-level: 1
+          if-no-files-found: error
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: almus-logs-${{ github.run_id }}
+          path: |
+            logs/
+            probe-out/
+          retention-days: 14
+          if-no-files-found: warn

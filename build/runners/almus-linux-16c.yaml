@@ -1,0 +1,13 @@
+# DESCRIPTION ONLY - GitHub does not read this file. It records the intended runner so humans can
+# create it in the GitHub UI (see docs/RUNNER_16CORE.md) and so reviewers can diff changes.
+name: almus-linux-16c
+status: NOT CREATED (requires GitHub Team or Enterprise Cloud; larger runners are always billed)
+platform: Linux x64
+image: GitHub-owned Ubuntu 24.04
+size: { vcpu: 16, ram_gb: 64, ssd_gb: 600 }       # sizes per GitHub larger-runner table
+billing_rate_usd_per_min: 0.042                    # GitHub Docs runner pricing; re-verify before use
+runner_group: almus-paid
+group_access: { repositories: [this repo only], workflows: [build-aosp.yml, probe-runner.yml], public_repos: false }
+max_concurrency: 1
+autoscaling_min: 0
+job_timeout_minutes: 350

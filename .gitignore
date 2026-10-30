@@ -1,0 +1,18 @@
+# AOSP/build output and secrets must never be committed
+out/
+out-artifacts/
+logs/
+probe-out/
+evidence/
+cf-home/
+*.img
+*.pk8
+*.pem
+*.p12
+*.jks
+*.keystore
+*.key
+*.apk
+*.zip
+*.tar.gz
+.env

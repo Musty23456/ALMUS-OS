@@ -1,0 +1,58 @@
+# MANUAL runner compatibility probe. Records facts; claims nothing it did not measure.
+# Free target needs no approval. Self-hosted and paid targets are gated by Environments (required reviewers).
+name: probe-runner
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which runner to probe
+        type: choice
+        required: true
+        default: github-hosted-free
+        options:
+          - github-hosted-free
+          - self-hosted
+          - paid-larger-16core
+permissions:
+  contents: read
+concurrency:
+  group: probe-runner
+  cancel-in-progress: false
+jobs:
+  probe-free:
+    if: inputs.target == 'github-hosted-free'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/probe
+        with:
+          artifact_name: probe-github-hosted-free
+
+  probe-selfhosted:
+    if: inputs.target == 'self-hosted'
+    runs-on: [self-hosted, linux, x64, almus-builder]
+    environment: self-hosted-runners
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/probe
+        with:
+          artifact_name: probe-self-hosted
+
+  probe-paid:
+    if: inputs.target == 'paid-larger-16core'
+    runs-on: almus-linux-16c
+    environment: paid-runners
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/probe
+        with:
+          artifact_name: probe-paid-16core
